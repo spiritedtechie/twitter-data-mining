@@ -1,0 +1,5 @@
+kafka*
+spark*
+data*
+metastore_db
+*.log
