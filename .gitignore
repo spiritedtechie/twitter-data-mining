@@ -3,3 +3,5 @@ spark*
 data*
 metastore_db
 *.log
+*credentials.json*
+.vscode
