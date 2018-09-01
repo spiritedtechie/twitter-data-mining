@@ -9,6 +9,12 @@ then
     ln -s ${KAFKA_VERSION} kafka
 fi
 
+# Make data directories
+sudo mkdir /var/lib/zookeeper
+sudo mkdir /var/lib/kafka
+sudo chown $USER /var/lib/zookeeper
+sudo chown $USER /var/lib/kafka
+
 # Start kafka cluster and zookeeper node
 ./kafka_2.11-2.0.0/bin/zookeeper-server-start.sh -daemon config/zookeeper.properties
 ./kafka_2.11-2.0.0/bin/kafka-server-start.sh -daemon config/server-1.properties
