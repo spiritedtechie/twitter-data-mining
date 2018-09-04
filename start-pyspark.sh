@@ -1,5 +1,6 @@
 #!/bin/bash
 
+sh install-py-deps.sh
 sh install-spark.sh
 export JAVA_HOME=$(/usr/libexec/java_home -v 1.8)
 source activate py36-twitter-mining
