@@ -3,6 +3,7 @@ import json
 import logging
 from kafka import KafkaProducer
 from kafka.errors import KafkaError
+from progress.bar import Bar
 
 producer = KafkaProducer(
     bootstrap_servers=['localhost:9093','localhost:9094'], 
@@ -13,10 +14,7 @@ producer = KafkaProducer(
 )
 
 def on_send_success(record_metadata):
-    print("Message sent")
-    print(" Topic: {}".format(record_metadata.topic))
-    print(" Partition: {}".format(record_metadata.partition))
-    print(" Offset: {}".format(record_metadata.offset))
+    return 
 
 def on_send_error(excp):
     logging.error('Error sending message', exc_info=excp)
@@ -29,13 +27,21 @@ api = twitter.Api(consumer_key=config_data['consumer_key'],
                   access_token_key=config_data['access_token_key'],
                   access_token_secret=config_data['access_token_secret'])
 
-# Get some data
-key = b'1'
-value = {'id': 1, 'name': 'John Smith', 'tweet': 'Kafka is cool'}
+friendIDs = api.GetFriendIDs()
+bar = Bar('Processing', max=len(friendIDs))
+for id in friendIDs:
+    timeline = api.GetUserTimeline(user_id=id, count=200)
 
-# Send it to kafka topic
-producer.send(topic='twitter-data', key=key, value=value)\
-    .add_callback(on_send_success)\
-    .add_errback(on_send_error)
+    for entry in timeline:
+        entry_as_json = entry._json
 
-producer.flush()
+        # Send it to kafka topic
+        producer.send(topic='twitter-data', key=str(id).encode(), value=entry_as_json)\
+            .add_callback(on_send_success)\
+            .add_errback(on_send_error)
+
+    producer.flush()
+
+    bar.next()
+
+bar.finish()
