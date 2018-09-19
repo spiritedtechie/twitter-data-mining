@@ -1,7 +1,9 @@
-kafka*
-spark*
-data*
+kafka*/
+spark*/
+data*/
 metastore_db
 *.log
+*.tgz
+*.zip
 *credentials.json*
 .vscode
