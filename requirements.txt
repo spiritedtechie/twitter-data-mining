@@ -2,3 +2,4 @@ python-twitter==3.4.2
 configparser==3.5.0
 kafka-python==1.4.3
 progress==1.4
+pyspark==2.3.1
