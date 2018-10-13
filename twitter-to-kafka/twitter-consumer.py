@@ -21,6 +21,34 @@ def on_send_error(excp):
     logging.error('Error sending message', exc_info=excp)
 
 
+def send_to_kafka_topic(key, value, topic='twitter-data'):
+    producer.send(topic=topic, key=str(key).encode(), value=value) \
+        .add_callback(on_send_success) \
+        .add_errback(on_send_error)
+    producer.flush()
+
+
+def process_tweets_from_user_timeline(userId, timeline, actionFunc):
+    tweetsProgressBar = Bar('Processing timeline tweets for friend with ID: %s' % userId, max=len(timeline))
+    for entry in timeline:
+        entry_as_json = entry._json
+        actionFunc(userId, entry_as_json)
+        tweetsProgressBar.next()
+
+    tweetsProgressBar.finish()
+
+
+def process_timelines(friendIDs):
+    friendProgressBar = Bar('Processing friends'' timelines', max=len(friendIDs))
+    for userId in friendIDs:
+        timeline = api.GetUserTimeline(user_id=userId, count=200)
+        process_tweets_from_user_timeline(userId, timeline,
+                                          lambda userId, tweetAsJson : send_to_kafka_topic(userId, tweetAsJson))
+        friendProgressBar.next()
+    friendProgressBar.finish()
+
+
+# Main script execution below
 with open('twitter-credentials.json', 'r') as config_file:
     config_data = json.load(config_file)
 
@@ -30,20 +58,5 @@ api = twitter.Api(consumer_key=config_data['consumer_key'],
                   access_token_secret=config_data['access_token_secret'])
 
 friendIDs = api.GetFriendIDs()
-bar = Bar('Processing', max=len(friendIDs))
-for id in friendIDs:
-    timeline = api.GetUserTimeline(user_id=id, count=200)
 
-    for entry in timeline:
-        entry_as_json = entry._json
-
-        # Send it to kafka topic
-        producer.send(topic='twitter-data', key=str(id).encode(), value=entry_as_json) \
-            .add_callback(on_send_success) \
-            .add_errback(on_send_error)
-
-    producer.flush()
-
-    bar.next()
-
-bar.finish()
+process_timelines(friendIDs)
