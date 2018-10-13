@@ -9,7 +9,7 @@ object TwitterWhoToFollowAnalysis {
 
   def main(args: Array[String]) {
 
-    val sparkConf = new SparkConf().setAppName("TwitterWhoToFollowAnalysis").setMaster("local[*]")
+    val sparkConf = new SparkConf().setAppName("TwitterWhoToFollowAnalysis")
     val streamingContext = new StreamingContext(sparkConf, Seconds(2))
 
     val kafkaParams = Map[String, Object](
