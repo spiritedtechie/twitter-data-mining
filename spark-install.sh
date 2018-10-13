@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Download and install
 SPARK_VERSION="spark-2.3.1-bin-hadoop2.7"
 

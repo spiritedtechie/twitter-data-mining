@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Start kafka cluster and zookeeper node
 ./kafka/bin/zookeeper-server-start.sh -daemon config/zookeeper.properties
 ./kafka/bin/kafka-server-start.sh -daemon config/server-1.properties

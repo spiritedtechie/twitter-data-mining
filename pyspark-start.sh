@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 export JAVA_HOME=$(/usr/libexec/java_home -v 1.8)
 source activate py36-twitter-mining

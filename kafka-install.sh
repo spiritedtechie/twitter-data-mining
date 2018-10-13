@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 # Download and install kafka
 KAFKA_VERSION="kafka_2.11-2.0.0"
 
@@ -10,7 +12,7 @@ then
 fi
 
 # Make data directories
-sudo mkdir /var/lib/zookeeper
-sudo mkdir /var/lib/kafka
+sudo mkdir -p /var/lib/zookeeper
+sudo mkdir -p /var/lib/kafka
 sudo chown $USER /var/lib/zookeeper
 sudo chown $USER /var/lib/kafka
