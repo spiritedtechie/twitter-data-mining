@@ -2,22 +2,24 @@ import twitter
 import json
 import logging
 from kafka import KafkaProducer
-from kafka.errors import KafkaError
 from progress.bar import Bar
 
 producer = KafkaProducer(
-    bootstrap_servers=['localhost:9093','localhost:9094'], 
-    retries=5, 
+    bootstrap_servers=['localhost:9093', 'localhost:9094'],
+    retries=5,
     acks=1,
     batch_size=0,
     value_serializer=lambda m: json.dumps(m).encode('ascii')
 )
 
+
 def on_send_success(record_metadata):
-    return 
+    return
+
 
 def on_send_error(excp):
     logging.error('Error sending message', exc_info=excp)
+
 
 with open('twitter-credentials.json', 'r') as config_file:
     config_data = json.load(config_file)
@@ -36,8 +38,8 @@ for id in friendIDs:
         entry_as_json = entry._json
 
         # Send it to kafka topic
-        producer.send(topic='twitter-data', key=str(id).encode(), value=entry_as_json)\
-            .add_callback(on_send_success)\
+        producer.send(topic='twitter-data', key=str(id).encode(), value=entry_as_json) \
+            .add_callback(on_send_success) \
             .add_errback(on_send_error)
 
     producer.flush()
