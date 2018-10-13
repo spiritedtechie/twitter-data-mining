@@ -5,5 +5,5 @@ metastore_db
 *.log
 *.tgz
 *.zip
-*credentials.json*
+**/*credentials.json*
 .vscode
