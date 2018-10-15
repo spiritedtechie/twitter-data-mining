@@ -10,11 +10,11 @@ object TwitterWhoToFollowAnalysis {
 
   def main(args: Array[String]) {
 
-    val sparkSession: SparkSession = SparkSession.builder
+    val spark: SparkSession = SparkSession.builder
       .appName("TwitterWhoToFollowAnalysis")
       .getOrCreate()
 
-    val streamingContext = new StreamingContext(sparkSession.sparkContext, Seconds(2))
+    val streamingContext = new StreamingContext(spark.sparkContext, Seconds(2))
 
     val kafkaParams = Map[String, Object](
       ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> "localhost:9094",
@@ -36,15 +36,20 @@ object TwitterWhoToFollowAnalysis {
     // Process RDDs in the stream
     stream.foreachRDD((rdd: RDD[ConsumerRecord[String, String]]) => {
       val tweetJsonRdd: RDD[String] = rdd.map(_.value())
-      val tweetJsonDataset: Dataset[String] = sparkSession.createDataset(tweetJsonRdd)(Encoders.STRING)
-      val tweetDF: DataFrame = sparkSession.read.json(tweetJsonDataset)
+      val tweetJsonDataset: Dataset[String] = spark.createDataset(tweetJsonRdd)(Encoders.STRING)
+      val tweetDF: DataFrame = spark.read.json(tweetJsonDataset)
+      tweetDF.createOrReplaceTempView("tweets")
 
       if (hasRetweets(tweetDF)) {
-        val allRetweetsDF: DataFrame = tweetDF
-          .select("id", "retweeted_status")
-          .where("retweeted_status is not null")
+        val usersToFollowDF: DataFrame = spark.sql("" +
+          "SELECT retweeted_status.id as retweeted_tweet_id, " +
+          "       retweeted_status.user.screen_name as retweeted_user " +
+          "FROM tweets " +
+          "WHERE retweeted_status IS NOT NULL " +
+          "AND retweeted_status.user.following = false"
+        )
 
-        allRetweetsDF.head(5).foreach(r => println("**** Retweeted: " + r))
+        usersToFollowDF.foreach(user => println("**** User to start following: " + user))
       }
     })
 
