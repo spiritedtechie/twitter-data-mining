@@ -35,13 +35,13 @@ object TwitterWhoToFollowAnalysis {
 
     // Process RDDs in the stream
     stream.foreachRDD((rdd: RDD[ConsumerRecord[String, String]]) => {
-      val tweetJsonRdd: RDD[String] = rdd.map(_.value())
-      val tweetJsonDataset: Dataset[String] = spark.createDataset(tweetJsonRdd)(Encoders.STRING)
-      val tweetDF: DataFrame = spark.read.json(tweetJsonDataset)
-      tweetDF.createOrReplaceTempView("tweets")
+      val tweetsJsonRDD: RDD[String] = rdd.map(_.value())
+      val tweetsJsonDataset: Dataset[String] = spark.createDataset(tweetsJsonRDD)(Encoders.STRING)
+      val tweetsDF: DataFrame = spark.read.json(tweetsJsonDataset)
+      tweetsDF.createOrReplaceTempView("tweets")
 
-      if (hasRetweets(tweetDF)) {
-        val usersToFollowDF: DataFrame = spark.sql("" +
+      if (hasRetweets(tweetsDF)) {
+        val retweetsDF: DataFrame = spark.sql("" +
           "SELECT retweeted_status.id as retweeted_tweet_id, " +
           "       retweeted_status.user.screen_name as retweeted_user " +
           "FROM tweets " +
@@ -49,19 +49,19 @@ object TwitterWhoToFollowAnalysis {
           "AND retweeted_status.user.following = false"
         )
 
-        usersToFollowDF.foreach(user => println("**** User to start following: " + user))
+        retweetsDF.foreach(retweet => println("**** User to start following: " + retweet))
       }
     })
 
-    // start context
+    // Start context
     streamingContext.start()
     streamingContext.awaitTermination()
   }
 
 
-  /** Since some tweets are not retweets, there will be datasets where there are no tweets that have no retweeted_status field.
-    * We need to ignore datasets that meet that criteria and there is nothing useful in them
-    * Also spark blows up if you try to query a dataset for a column that is not in the derived schema
+  /** Since some tweets are not retweets, there will be datasets/RDDs where there are no tweets that have no
+    * retweeted_status field. We need to ignore datasets that meet that criteria and there is nothing useful in them.
+    * Also spark blows up if you try to query a dataset for a column that is not in the derived schema.
     * */
   val hasRetweets: DataFrame => Boolean =
     (dataFrame: DataFrame) => dataFrame.schema.fields.exists(structField => "retweeted_status".equals(structField.name))
