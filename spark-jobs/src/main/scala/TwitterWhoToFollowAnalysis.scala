@@ -1,10 +1,8 @@
-import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord}
-import org.apache.kafka.common.serialization.StringDeserializer
-import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
-import org.apache.spark.streaming._
-import org.apache.spark.streaming.dstream.InputDStream
-import org.apache.spark.streaming.kafka010._
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.streaming.StreamingQuery
+import org.apache.spark.sql.types.StructType
+
 
 object TwitterWhoToFollowAnalysis {
 
@@ -14,55 +12,56 @@ object TwitterWhoToFollowAnalysis {
       .appName("TwitterWhoToFollowAnalysis")
       .getOrCreate()
 
-    val streamingContext = new StreamingContext(spark.sparkContext, Seconds(2))
+    import spark.implicits._
 
-    val kafkaParams = Map[String, Object](
-      ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG -> "localhost:9094",
-      ConsumerConfig.GROUP_ID_CONFIG -> "who-to-follow-analysis-group",
-      ConsumerConfig.AUTO_OFFSET_RESET_CONFIG -> "earliest",
-      ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG -> (true: java.lang.Boolean),
-      ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG -> classOf[StringDeserializer],
-      ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG -> classOf[StringDeserializer]
-    )
+    val kafkaDF: DataFrame = spark
+      .readStream
+      .format("kafka")
+      .option("kafka.bootstrap.servers", "localhost:9094")
+      .option("subscribe", "twitter-data")
+      .option("startingOffsets", "earliest")
+      .load()
 
-    // Create stream (of continuous seq of RDDs)
-    val stream: InputDStream[ConsumerRecord[String, String]] =
-      KafkaUtils.createDirectStream[String, String](
-        streamingContext,
-        LocationStrategies.PreferConsistent,
-        ConsumerStrategies.Subscribe[String, String](Set("twitter-data"), kafkaParams)
+    // Schema
+    val tweetSchema = new StructType()
+      .add("id", "string")
+      .add("retweeted_status", new StructType()
+        .add("id", "string")
+        .add("user", new StructType()
+          .add("screen_name", "string")
+          .add("following", "boolean")
+        )
       )
 
-    // Process RDDs in the stream
-    stream.foreachRDD((rdd: RDD[ConsumerRecord[String, String]]) => {
-      val tweetsJsonRDD: RDD[String] = rdd.map(_.value())
-      val tweetsJsonDataset: Dataset[String] = spark.createDataset(tweetsJsonRDD)(Encoders.STRING)
-      val tweetsDF: DataFrame = spark.read.json(tweetsJsonDataset)
-      tweetsDF.createOrReplaceTempView("tweets")
+    // Convert JSON string to parsed JSON via Schema
+    val tweetDF: DataFrame = kafkaDF
+      .selectExpr("cast (value as string) as tweetJson")
+      .select(from_json($"tweetJson", tweetSchema).alias("tweet"))
 
-      if (hasRetweets(tweetsDF)) {
-        val retweetsDF: DataFrame = spark.sql("" +
-          "SELECT retweeted_status.id as retweeted_tweet_id, " +
-          "       retweeted_status.user.screen_name as retweeted_user " +
-          "FROM tweets " +
-          "WHERE retweeted_status IS NOT NULL " +
-          "AND retweeted_status.user.following = false"
-        )
+    // Create a temp view for native SQL querying
+    tweetDF.createTempView("tweets")
 
-        retweetsDF.foreach(retweet => println("**** User to start following: " + retweet))
-      }
-    })
+    // Spark SQL approach
+    val retweetsOfPeopleIDoNotFollowDFNotUsed = tweetDF
+      .select("tweet.retweeted_status.id",
+        "tweet.retweeted_status.user.screen_name")
+      .where("tweet.retweeted_status is not null")
+      .where("tweet.retweeted_status.user.following = false")
 
-    // Start context
-    streamingContext.start()
-    streamingContext.awaitTermination()
+    // Standard SQL approach, querying temp view
+    val retweetsOfPeopleIDoNotFollowDF = spark.sql("" +
+      "SELECT tweet.retweeted_status.id as retweeted_tweet_id, " +
+      "       tweet.retweeted_status.user.screen_name as retweeted_user " +
+      "FROM tweets " +
+      "WHERE tweet.retweeted_status IS NOT NULL " +
+      "AND tweet.retweeted_status.user.following = false"
+    )
+
+    val query: StreamingQuery = retweetsOfPeopleIDoNotFollowDF.writeStream
+      .format("console")
+      .start()
+
+    query.awaitTermination()
   }
 
-
-  /** Since some tweets are not retweets, there will be datasets/RDDs where there are no tweets that have no
-    * retweeted_status field. We need to ignore datasets that meet that criteria and there is nothing useful in them.
-    * Also spark blows up if you try to query a dataset for a column that is not in the derived schema.
-    * */
-  val hasRetweets: DataFrame => Boolean =
-    (dataFrame: DataFrame) => dataFrame.schema.fields.exists(structField => "retweeted_status".equals(structField.name))
 }
