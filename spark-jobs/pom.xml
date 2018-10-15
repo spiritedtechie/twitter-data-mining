@@ -19,6 +19,14 @@
             <artifactId>scala-library</artifactId>
         </dependency>
         <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-api</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.slf4j</groupId>
+            <artifactId>slf4j-log4j12</artifactId>
+        </dependency>
+        <dependency>
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-core_${scala.compat.version}</artifactId>
         </dependency>
@@ -34,14 +42,6 @@
             <groupId>org.apache.spark</groupId>
             <artifactId>spark-streaming-kafka-0-10_${scala.compat.version}</artifactId>
         </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-api</artifactId>
-        </dependency>
-        <dependency>
-            <groupId>org.slf4j</groupId>
-            <artifactId>slf4j-log4j12</artifactId>
-        </dependency>
     </dependencies>
 
     <build>
@@ -49,18 +49,6 @@
         <testSourceDirectory>src/test/scala</testSourceDirectory>
 
         <plugins>
-
-            <plugin>
-                <groupId>org.apache.maven.plugins</groupId>
-                <artifactId>maven-jar-plugin</artifactId>
-                <configuration>
-                    <archive>
-                        <manifest>
-                            <mainClass>TwitterWhoToFollowAnalysis</mainClass>
-                        </manifest>
-                    </archive>
-                </configuration>
-            </plugin>
             <plugin>
                 <!-- see http://davidb.github.com/scala-maven-plugin -->
                 <groupId>net.alchim31.maven</groupId>
@@ -74,15 +62,37 @@
                     </execution>
                 </executions>
             </plugin>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration>
+                    <archive>
+                        <manifest>
+                            <mainClass>TwitterWhoToFollowAnalysis</mainClass>
+                        </manifest>
+                    </archive>
+                </configuration>
+            </plugin>
         </plugins>
     </build>
+
     <profiles>
         <profile>
-            <id>deploy</id>
+            <id>spark-submit</id>
             <dependencies>
                 <dependency>
                     <groupId>org.scala-lang</groupId>
                     <artifactId>scala-library</artifactId>
+                    <scope>provided</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-api</artifactId>
+                    <scope>provided</scope>
+                </dependency>
+                <dependency>
+                    <groupId>org.slf4j</groupId>
+                    <artifactId>slf4j-log4j12</artifactId>
                     <scope>provided</scope>
                 </dependency>
                 <dependency>
@@ -108,7 +118,6 @@
             </dependencies>
             <build>
                 <plugins>
-                    <!-- To create a fat jar-->
                     <plugin>
                         <groupId>org.apache.maven.plugins</groupId>
                         <artifactId>maven-shade-plugin</artifactId>
@@ -133,8 +142,6 @@
                             </filters>
                         </configuration>
                     </plugin>
-                    <!--To run the job on a local (in-process) spark cluster-->
-                    <!--mvn -pl spark-jobs exec:exec@submit-to-spark-local-->
                     <plugin>
                         <groupId>org.codehaus.mojo</groupId>
                         <artifactId>exec-maven-plugin</artifactId>
@@ -156,7 +163,7 @@
                                 </configuration>
                             </execution>
                             <execution>
-                                <id>submit-to-spark</id>
+                                <id>submit-to-spark-standalone</id>
                                 <goals>
                                     <goal>exec</goal>
                                 </goals>
@@ -176,11 +183,7 @@
                             </execution>
                         </executions>
                     </plugin>
-                    <!-- To run the job on a standalone spark cluster -->
-                    <!-- mvn -pl spark-jobs exec:exec@submit-to-spark-->
-
                 </plugins>
-
             </build>
         </profile>
     </profiles>

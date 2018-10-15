@@ -1,6 +1,5 @@
 import org.apache.kafka.clients.consumer.{ConsumerConfig, ConsumerRecord}
 import org.apache.kafka.common.serialization.StringDeserializer
-import org.apache.spark.SparkConf
 import org.apache.spark.rdd.RDD
 import org.apache.spark.sql._
 import org.apache.spark.streaming._
@@ -11,8 +10,10 @@ object TwitterWhoToFollowAnalysis {
 
   def main(args: Array[String]) {
 
-    val sparkConf = new SparkConf().setAppName("TwitterWhoToFollowAnalysis")
-    val sparkSession: SparkSession = SparkSession.builder.config(sparkConf).getOrCreate()
+    val sparkSession: SparkSession = SparkSession.builder
+      .appName("TwitterWhoToFollowAnalysis")
+      .getOrCreate()
+
     val streamingContext = new StreamingContext(sparkSession.sparkContext, Seconds(2))
 
     val kafkaParams = Map[String, Object](
@@ -24,7 +25,7 @@ object TwitterWhoToFollowAnalysis {
       ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG -> classOf[StringDeserializer]
     )
 
-    // Create stream
+    // Create stream (of continuous seq of RDDs)
     val stream: InputDStream[ConsumerRecord[String, String]] =
       KafkaUtils.createDirectStream[String, String](
         streamingContext,
@@ -32,34 +33,31 @@ object TwitterWhoToFollowAnalysis {
         ConsumerStrategies.Subscribe[String, String](Set("twitter-data"), kafkaParams)
       )
 
-    // Process stream
+    // Process RDDs in the stream
     stream.foreachRDD((rdd: RDD[ConsumerRecord[String, String]]) => {
+      val tweetJsonRdd: RDD[String] = rdd.map(_.value())
+      val tweetJsonDataset: Dataset[String] = sparkSession.createDataset(tweetJsonRdd)(Encoders.STRING)
+      val tweetDF: DataFrame = sparkSession.read.json(tweetJsonDataset)
 
-      val rdd1: RDD[String] = rdd.map(cr => cr.value())
+      if (hasRetweets(tweetDF)) {
+        val allRetweetsDF: DataFrame = tweetDF
+          .select("id", "retweeted_status")
+          .where("retweeted_status is not null")
 
-      val ds: Dataset[String] = sparkSession.createDataset(rdd1)(Encoders.STRING)
-
-      val df: DataFrame = sparkSession.read.json(ds)
-
-
-      if (df.count() >= 1) {
-
-        val dfHasRetweets = !df.schema.fields.filter(sf => "retweeted_status".equals(sf.name)).isEmpty
-
-        if (dfHasRetweets) {
-          val rowsThatAreRetweets = df.select("id", "retweeted_status")
-            .where("retweeted_status is not null")
-
-          rowsThatAreRetweets.head(5).foreach(r => println("**** row: " + r))
-
-        }
-
+        allRetweetsDF.head(5).foreach(r => println("**** Retweeted: " + r))
       }
-
     })
 
+    // start context
     streamingContext.start()
     streamingContext.awaitTermination()
   }
 
+
+  /** Since some tweets are not retweets, there will be datasets where there are no tweets that have no retweeted_status field.
+    * We need to ignore datasets that meet that criteria and there is nothing useful in them
+    * Also spark blows up if you try to query a dataset for a column that is not in the derived schema
+    * */
+  val hasRetweets: DataFrame => Boolean =
+    (dataFrame: DataFrame) => dataFrame.schema.fields.exists(structField => "retweeted_status".equals(structField.name))
 }
