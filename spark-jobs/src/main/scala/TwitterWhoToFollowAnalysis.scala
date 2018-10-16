@@ -1,10 +1,24 @@
 import org.apache.spark.sql._
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.streaming.StreamingQuery
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.streaming.{OutputMode, StreamingQuery}
+import org.apache.spark.sql.types.{StructType, _}
 
 
 object TwitterWhoToFollowAnalysis {
+
+  // Schema
+  val tweetSchema = (new StructType)
+    .add("id", StringType)
+    .add("user", new StructType()
+      .add("screen_name", StringType)
+    )
+    .add("retweeted_status", (new StructType)
+      .add("id", StringType)
+      .add("user", (new StructType)
+        .add("screen_name", StringType)
+        .add("following", BooleanType)
+      )
+    )
 
   def main(args: Array[String]) {
 
@@ -22,42 +36,38 @@ object TwitterWhoToFollowAnalysis {
       .option("startingOffsets", "earliest")
       .load()
 
-    // Schema
-    val tweetSchema = new StructType()
-      .add("id", "string")
-      .add("retweeted_status", new StructType()
-        .add("id", "string")
-        .add("user", new StructType()
-          .add("screen_name", "string")
-          .add("following", "boolean")
-        )
-      )
 
     // Convert JSON string to parsed JSON via Schema
-    val tweetDF: DataFrame = kafkaDF
+    val tweetsDF: DataFrame = kafkaDF
       .selectExpr("cast (value as string) as tweetJson")
       .select(from_json($"tweetJson", tweetSchema).alias("tweet"))
 
     // Create a temp view for native SQL querying
-    tweetDF.createTempView("tweets")
-
-    // Spark SQL approach
-    val retweetsOfPeopleIDoNotFollowDFNotUsed = tweetDF
-      .select("tweet.retweeted_status.id",
-        "tweet.retweeted_status.user.screen_name")
-      .where("tweet.retweeted_status is not null")
-      .where("tweet.retweeted_status.user.following = false")
+    tweetsDF.createTempView("tweets")
 
     // Standard SQL approach, querying temp view
-    val retweetsOfPeopleIDoNotFollowDF = spark.sql("" +
-      "SELECT tweet.retweeted_status.id as retweeted_tweet_id, " +
-      "       tweet.retweeted_status.user.screen_name as retweeted_user " +
+    val retweetsOfUnconnectedUsersDF = spark.sql("" +
+      "SELECT tweet.id as tweet_id," +
+      "       tweet.user as tweet_user, " +
+      "       tweet.retweeted_status.id as retweeted_tweet_id, " +
+      "       tweet.retweeted_status.user as retweeted_tweet_user " +
       "FROM tweets " +
       "WHERE tweet.retweeted_status IS NOT NULL " +
       "AND tweet.retweeted_status.user.following = false"
+    ).distinct()
+
+    retweetsOfUnconnectedUsersDF.createTempView("retweets_of_unconnected_users")
+
+    val unconnectedUserRetweetCountDF = spark.sql("" +
+      "SELECT retweeted_tweet_user, count(*) as number_of_retweets " +
+      "FROM retweets_of_unconnected_users " +
+      "GROUP BY retweeted_tweet_user " +
+      "ORDER BY number_of_retweets DESC"
     )
 
-    val query: StreamingQuery = retweetsOfPeopleIDoNotFollowDF.writeStream
+    val query: StreamingQuery = unconnectedUserRetweetCountDF
+      .writeStream
+      .outputMode(OutputMode.Complete())
       .format("console")
       .start()
 
