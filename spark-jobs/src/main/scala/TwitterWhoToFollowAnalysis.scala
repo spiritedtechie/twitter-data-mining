@@ -18,6 +18,8 @@ object TwitterWhoToFollowAnalysis {
         .add("screen_name", StringType)
         .add("following", BooleanType)
       )
+      .add("retweet_count", IntegerType)
+      .add("favorite_count", IntegerType)
     )
 
   def main(args: Array[String]) {
@@ -50,19 +52,24 @@ object TwitterWhoToFollowAnalysis {
       "SELECT tweet.id as tweet_id," +
       "       tweet.user as tweet_user, " +
       "       tweet.retweeted_status.id as retweeted_tweet_id, " +
-      "       tweet.retweeted_status.user as retweeted_tweet_user " +
+      "       tweet.retweeted_status.user as retweeted_tweet_user, " +
+      "       tweet.retweeted_status.retweet_count as retweeted_tweet_retweet_count, " +
+      "       tweet.retweeted_status.favorite_count as retweeted_tweet_favorite_count " +
       "FROM tweets " +
       "WHERE tweet.retweeted_status IS NOT NULL " +
-      "AND tweet.retweeted_status.user.following = false"
+      "AND tweet.retweeted_status.user.following = false "
     ).distinct()
 
     retweetsOfUnconnectedUsersDF.createTempView("retweets_of_unconnected_users")
 
     val unconnectedUserRetweetCountDF = spark.sql("" +
-      "SELECT retweeted_tweet_user, count(*) as number_of_retweets " +
+      "SELECT retweeted_tweet_user, " +
+      "       COUNT(*) as number_connections_who_retweeted, " +
+      "       MAX(retweeted_tweet_retweet_count) as max_retweet, " +
+      "       MAX(retweeted_tweet_favorite_count) as max_favourite " +
       "FROM retweets_of_unconnected_users " +
       "GROUP BY retweeted_tweet_user " +
-      "ORDER BY number_of_retweets DESC"
+      "ORDER BY max_retweet DESC"
     )
 
     val query: StreamingQuery = unconnectedUserRetweetCountDF
